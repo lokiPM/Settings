@@ -1,0 +1,16 @@
+name: Settings
+version: 0.1.4
+main: lokiPM\Settings\Main
+api: 5.0.0
+src-namespace-prefix: lokiPM\Settings
+
+commands:
+  settings:
+    description: Open Settings.
+    permission: settings.menu
+    default: true
+
+permissions:
+  settings.menu:
+    description: Allows the use of /settings
+    default: true
