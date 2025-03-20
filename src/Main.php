@@ -90,4 +90,140 @@ class Main extends PluginBase implements Listener {
 
                     if (isset($data[2])) {
                         $newState = (bool)$data[2];
-                        $currentState =
+                        $currentState = $this->plugin->getScoreboardState($this->playerName);
+                        if ($newState !== $currentState) {
+                            $this->plugin->setScoreboardState($this->playerName, $newState);
+                            $this->plugin->handleScoreboardCommand($this->playerName, $newState);
+                        }
+                    }
+
+                    $this->plugin->saveConfig();
+                }
+
+                public function jsonSerialize(): array {
+                    return [
+                        "type" => "custom_form",
+                        "title" => "Settings",
+                        "content" => [
+                            [
+                                "type" => "toggle",
+                                "text" => "Auto Sprint",
+                                "default" => $this->plugin->getToggleState($this->playerName)
+                            ],
+                            [
+                                "type" => "toggle",
+                                "text" => "CPS Popup",
+                                "default" => $this->plugin->getCpsPopupState($this->playerName)
+                            ],
+                            [
+                                "type" => "toggle",
+                                "text" => "Scoreboard",
+                                "default" => $this->plugin->getScoreboardState($this->playerName)
+                            ]
+                        ]
+                    ];
+                }
+            };
+
+            $sender->sendForm($form);
+            return true;
+        }
+        return false;
+    }
+
+    public function setToggleState(string $playerName, bool $state): void {
+        $this->toggleState[$playerName] = $state;
+    }
+
+    public function getToggleState(string $playerName): bool {
+        return $this->toggleState[$playerName] ?? false;
+    }
+
+    public function setCpsPopupState(string $playerName, bool $state): void {
+        $this->cpsPopupState[$playerName] = $state;
+    }
+
+    public function getCpsPopupState(string $playerName): bool {
+        return $this->cpsPopupState[$playerName] ?? false;
+    }
+
+    public function setScoreboardState(string $playerName, bool $state): void {
+        $this->scoreboardState[$playerName] = $state;
+    }
+
+    public function getScoreboardState(string $playerName): bool {
+        return $this->scoreboardState[$playerName] ?? true;
+    }
+
+    public function handleScoreboardCommand(string $playerName, bool $state): void {
+        $player = $this->getServer()->getPlayerExact($playerName);
+        if ($player instanceof Player) {
+            $command = $state ? "scorehud on" : "scorehud off";
+            $this->getServer()->dispatchCommand($player, $command);
+        }
+    }
+
+    public function onPlayerMove(PlayerMoveEvent $event): void {
+        $player = $event->getPlayer();
+        $playerName = $player->getName();
+
+        if ($this->getToggleState($playerName)) {
+            $from = $event->getFrom();
+            $to = $event->getTo();
+
+            if ($from->distanceSquared($to) > 0) {
+                $player->setSprinting(true);
+            } else {
+                $player->setSprinting(false);
+            }
+        }
+    }
+
+    public function onDataPacketReceive(DataPacketReceiveEvent $event): void {
+        $packet = $event->getPacket();
+        $player = $event->getOrigin()->getPlayer();
+
+        if ($player instanceof Player && $packet instanceof InventoryTransactionPacket) {
+            $transaction = $packet->trData;
+
+            if ($transaction instanceof UseItemOnEntityTransactionData) {
+                $playerName = $player->getName();
+                if ($this->getCpsPopupState($playerName)) {
+                    $this->recordClick($playerName);
+                }
+            }
+        }
+    }
+
+    public function recordClick(string $playerName): void {
+        $currentTime = microtime(true);
+        $this->clickTimestamps[$playerName][] = $currentTime;
+
+        $this->clickTimestamps[$playerName] = array_filter(
+            $this->clickTimestamps[$playerName] ?? [],
+            fn($timestamp) => ($currentTime - $timestamp) <= 1.0
+        );
+    }
+
+    public function calculateCps(string $playerName): int {
+        $currentTime = microtime(true);
+        $this->clickTimestamps[$playerName] = array_filter(
+            $this->clickTimestamps[$playerName] ?? [],
+            fn($timestamp) => ($currentTime - $timestamp) <= 1.0
+        );
+        return count($this->clickTimestamps[$playerName] ?? []);
+    }
+
+    public function onPlayerJoin(PlayerJoinEvent $event): void {
+        $player = $event->getPlayer();
+        $playerName = $player->getName();
+    }
+
+    public function onPlayerQuit(PlayerQuitEvent $event): void {
+        $playerName = $event->getPlayer()->getName();
+    }
+
+    public function onDisable(): void {
+        $this->saveConfig();
+    }
+}
