@@ -8,7 +8,6 @@ use pocketmine\command\CommandSender;
 use pocketmine\player\Player;
 use pocketmine\form\Form;
 use pocketmine\event\Listener;
-use pocketmine\event\player\PlayerChatEvent;
 use pocketmine\event\player\PlayerMoveEvent;
 use pocketmine\event\player\PlayerJoinEvent;
 use pocketmine\event\player\PlayerQuitEvent;
@@ -21,7 +20,6 @@ use pocketmine\scheduler\Task;
 class Main extends PluginBase implements Listener {
 
     private $toggleState = [];
-    private $muteChat = [];
     private $scoreboardState = [];
     private $cpsPopupState = [];
     private $clickTimestamps = [];
@@ -31,6 +29,7 @@ class Main extends PluginBase implements Listener {
         $this->getServer()->getPluginManager()->registerEvents($this, $this);
         $this->loadConfig();
 
+        // Aktualisiere die CPS-Anzeige alle 100 Millisekunden (2 Ticks)
         $this->getScheduler()->scheduleRepeatingTask(new class($this) extends Task {
             private $plugin;
 
@@ -47,7 +46,7 @@ class Main extends PluginBase implements Listener {
                     }
                 }
             }
-        }, 20);
+        }, 2); // 2 Ticks = 100 Millisekunden
     }
 
     private function loadConfig(): void {
@@ -55,14 +54,12 @@ class Main extends PluginBase implements Listener {
         $this->config = new Config($this->getDataFolder() . "settings.yml", Config::YAML);
 
         $this->toggleState = $this->config->get("toggleState", []);
-        $this->muteChat = $this->config->get("muteChat", []);
         $this->scoreboardState = $this->config->get("scoreboardState", []);
         $this->cpsPopupState = $this->config->get("cpsPopupState", []);
     }
 
     public function saveConfig(): void {
         $this->config->set("toggleState", $this->toggleState);
-        $this->config->set("muteChat", $this->muteChat);
         $this->config->set("scoreboardState", $this->scoreboardState);
         $this->config->set("cpsPopupState", $this->cpsPopupState);
         $this->config->save();
@@ -92,11 +89,7 @@ class Main extends PluginBase implements Listener {
                     }
 
                     if (isset($data[2])) {
-                        $this->plugin->setMuteChat($this->playerName, (bool)$data[2]);
-                    }
-
-                    if (isset($data[3])) {
-                        $newState = (bool)$data[3];
+                        $newState = (bool)$data[2];
                         $currentState = $this->plugin->getScoreboardState($this->playerName);
                         if ($newState !== $currentState) {
                             $this->plugin->setScoreboardState($this->playerName, $newState);
@@ -121,11 +114,6 @@ class Main extends PluginBase implements Listener {
                                 "type" => "toggle",
                                 "text" => "CPS Popup",
                                 "default" => $this->plugin->getCpsPopupState($this->playerName)
-                            ],
-                            [
-                                "type" => "toggle",
-                                "text" => "Mute Chat",
-                                "default" => $this->plugin->getMuteChat($this->playerName)
                             ],
                             [
                                 "type" => "toggle",
@@ -159,14 +147,6 @@ class Main extends PluginBase implements Listener {
         return $this->cpsPopupState[$playerName] ?? false;
     }
 
-    public function setMuteChat(string $playerName, bool $state): void {
-        $this->muteChat[$playerName] = $state;
-    }
-
-    public function getMuteChat(string $playerName): bool {
-        return $this->muteChat[$playerName] ?? false;
-    }
-
     public function setScoreboardState(string $playerName, bool $state): void {
         $this->scoreboardState[$playerName] = $state;
     }
@@ -181,19 +161,6 @@ class Main extends PluginBase implements Listener {
             $command = $state ? "scorehud on" : "scorehud off";
             $this->getServer()->dispatchCommand($player, $command);
         }
-    }
-
-    public function onPlayerChat(PlayerChatEvent $event): void {
-        $recipients = $event->getRecipients();
-        $sender = $event->getPlayer();
-
-        foreach ($recipients as $key => $recipient) {
-            if ($recipient instanceof Player && $this->getMuteChat($recipient->getName())) {
-                unset($recipients[$key]);
-            }
-        }
-
-        $event->setRecipients($recipients);
     }
 
     public function onPlayerMove(PlayerMoveEvent $event): void {
